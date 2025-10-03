@@ -797,6 +797,13 @@ class BacktestAnalyzerPro:
             threshold_losses = mean_losses - 2 * std_losses
             extreme_losses = losses[losses < threshold_losses]
             outlier_loss_ratio = len(extreme_losses) / len(losses)
+
+            # DEBUG: Afficher les stats des pertes
+            import streamlit as st
+            st.write(f"🔍 DEBUG Pertes: mean={mean_losses:.4f}, std={std_losses:.4f}, threshold={threshold_losses:.4f}")
+            st.write(f"Nombre de pertes extrêmes: {len(extreme_losses)}/{len(losses)}")
+            if len(extreme_losses) > 0:
+                st.write(f"Pires pertes: {extreme_losses.nsmallest(3).values}")
         else:
             outlier_loss_ratio = 0.0
 
