@@ -4483,15 +4483,57 @@ def main():
 
                         # Explication des ratios
                         with st.expander("ℹ️ Explication des Tail and Outlier Ratios"):
-                            st.markdown("""
-                            **Tail Ratio**: Rapport entre les rendements extrêmes positifs (95e percentile) et négatifs (5e percentile).
-                            Une valeur > 1 indique que les gains extrêmes sont plus importants que les pertes extrêmes.
+                            st.markdown(f"""
+                            ### 📊 **Tail Ratio: {tail_ratios['tail_ratio']:.2f}**
 
-                            **Outlier Win Ratio**: Proportion des gains qui sont considérés comme des outliers (> moyenne + 2σ).
-                            Une valeur élevée indique des gains exceptionnels fréquents.
+                            **Définition**: Rapport entre les gains extrêmes et pertes extrêmes
 
-                            **Outlier Loss Ratio**: Proportion des pertes qui sont considérées comme des outliers (< moyenne - 2σ).
-                            Une valeur élevée indique des pertes exceptionnelles fréquentes.
+                            **Calcul**: `Tail Ratio = P95(gains) / |P5(pertes)|`
+                            - P95 = 95ème percentile des rendements (top 5% des gains)
+                            - P5 = 5ème percentile des rendements (bottom 5% des pertes)
+
+                            **Interprétation**:
+                            - **> 1**: Les meilleurs gains sont plus grands que les pires pertes ✅
+                            - **< 1**: Les pires pertes sont plus grandes que les meilleurs gains ⚠️
+
+                            **Benchmarks**:
+                            - 🥉 Bon: 1.0 - 2.0
+                            - 🥈 Très bon: 2.0 - 4.0
+                            - 🥇 Excellent: > 4.0 (vous: {tail_ratios['tail_ratio']:.2f})
+
+                            ---
+
+                            ### 📊 **Outlier Win Ratio: {tail_ratios['outlier_win_ratio']:.2%}**
+
+                            **Définition**: Proportion de gains exceptionnels (top 5%)
+
+                            **Calcul**: `Outlier Win = Nb gains > P95 / Total gains`
+
+                            **Interprétation**:
+                            - Mesure la fréquence de gains exceptionnels
+                            - 5% théorique par définition du percentile
+
+                            **Benchmarks**:
+                            - 📊 Normal: ~5%
+                            - ⚡ Élevé: > 8% (stratégie momentum/breakout)
+                            - 🎯 Votre valeur: {tail_ratios['outlier_win_ratio']:.2%}
+
+                            ---
+
+                            ### 📊 **Outlier Loss Ratio: {tail_ratios['outlier_loss_ratio']:.2%}**
+
+                            **Définition**: Proportion de pertes exceptionnelles (bottom 5%)
+
+                            **Calcul**: `Outlier Loss = Nb pertes < P5 / Total pertes`
+
+                            **Interprétation**:
+                            - Mesure la fréquence de pertes catastrophiques
+                            - **Plus c'est bas, mieux c'est** (stop-loss efficace)
+
+                            **Benchmarks**:
+                            - ✅ Excellent: < 5% (stop-loss strict)
+                            - ⚠️ Attention: > 8% (grosses pertes fréquentes)
+                            - 🎯 Votre valeur: {tail_ratios['outlier_loss_ratio']:.2%}
                             """)
 
                         st.markdown("---")
@@ -4540,6 +4582,51 @@ def main():
                                 <h1 style="margin: 5px 0; color: white; font-size: 1.8em;">{:.2%}</h1>
                             </div>
                             """.format(avg_stats['avg_losing_trade']), unsafe_allow_html=True)
+
+                        # Explication Average Wins and Losses
+                        with st.expander("ℹ️ Explication des Average Wins and Losses"):
+                            rr_ratio = abs(avg_stats['avg_winning_trade'] / avg_stats['avg_losing_trade']) if avg_stats['avg_losing_trade'] != 0 else 0
+                            st.markdown(f"""
+                            ### 💰 **Average Winning Trade: {avg_stats['avg_winning_trade']:.2%}**
+
+                            **Définition**: Gain moyen par trade gagnant
+
+                            **Calcul**: `Avg Win = Σ(gains) / Nb trades gagnants`
+
+                            **Benchmarks**:
+                            - 📊 Day Trading: 0.5% - 2%
+                            - 📊 Swing Trading: 2% - 5%
+                            - 📊 Position Trading: 5% - 15%
+                            - 🎯 Votre valeur: {avg_stats['avg_winning_trade']:.2%}
+
+                            ---
+
+                            ### 💰 **Average Losing Trade: {avg_stats['avg_losing_trade']:.2%}**
+
+                            **Définition**: Perte moyenne par trade perdant
+
+                            **Calcul**: `Avg Loss = Σ(pertes) / Nb trades perdants`
+
+                            **Benchmarks**:
+                            - ✅ Excellent: -0.5% à -1% (stop-loss serré)
+                            - 📊 Normal: -1% à -2%
+                            - ⚠️ Élevé: > -2% (risque important)
+                            - 🎯 Votre valeur: {avg_stats['avg_losing_trade']:.2%}
+
+                            ---
+
+                            ### 📊 **Risk/Reward Ratio: {rr_ratio:.2f}:1**
+
+                            **Calcul**: `R/R = Avg Win / |Avg Loss| = {avg_stats['avg_winning_trade']:.2%} / {abs(avg_stats['avg_losing_trade']):.2%} = {rr_ratio:.2f}`
+
+                            **Interprétation**: Pour chaque 1€ risqué, vous gagnez en moyenne {rr_ratio:.2f}€
+
+                            **Benchmarks**:
+                            - ⚠️ Faible: < 1.5:1
+                            - 📊 Bon: 1.5:1 - 3:1
+                            - ✅ Très bon: 3:1 - 5:1
+                            - 🥇 Excellent: > 5:1 (vous: {rr_ratio:.2f}:1)
+                            """)
 
                         st.markdown("---")
 
@@ -4597,6 +4684,45 @@ def main():
                             </div>
                             """.format(winning_stats['win_rate']), unsafe_allow_html=True)
 
+                        # Explication Winning Rates
+                        with st.expander("ℹ️ Explication des Winning Rates"):
+                            st.markdown(f"""
+                            ### 📈 **Win Rate: {winning_stats['win_rate']:.2%}**
+
+                            **Définition**: Pourcentage de trades gagnants
+
+                            **Calcul**: `Win Rate = Nb trades gagnants / Total trades`
+
+                            **Benchmarks selon stratégie**:
+                            - 🎯 Mean Reversion: 50-70% (nombreux petits gains)
+                            - 🚀 Momentum/Breakout: 30-50% (peu de gros gains)
+                            - 📊 Scalping: 60-80% (très nombreux petits gains)
+                            - 🎯 Votre valeur: {winning_stats['win_rate']:.2%}
+
+                            **💡 Règle importante**: Win Rate × R/R doit être > 1 pour être profitable
+                            - Vous: {winning_stats['win_rate']:.2%} × {rr_ratio:.2f} = **{winning_stats['win_rate'] * rr_ratio:.2f}** {"✅" if winning_stats['win_rate'] * rr_ratio > 1 else "⚠️"}
+
+                            ---
+
+                            ### 📅 **Winning Days/Months/Quarters/Years**
+
+                            **Définition**: Pourcentage de périodes gagnantes
+
+                            **Calculs**:
+                            - `Winning Days = Nb jours positifs / Total jours tradés`
+                            - `Winning Months = Nb mois positifs / Total mois`
+                            - `Winning Quarters = Nb trimestres positifs / Total trimestres`
+                            - `Winning Years = Nb années positives / Total années`
+
+                            **Benchmarks Winning Years**:
+                            - ⚠️ Risqué: < 60%
+                            - 📊 Bon: 60-80%
+                            - ✅ Très bon: 80-100%
+                            - 🥇 Parfait: 100% (vous: {winning_stats['winning_years']:.2%})
+
+                            **Interprétation**: Plus le % est élevé sur les longues périodes (années), plus la stratégie est consistante et robuste
+                            """)
+
                         st.markdown("---")
 
                         # Section Transaction Costs
@@ -4639,14 +4765,47 @@ def main():
                         # Explication des coûts
                         with st.expander("ℹ️ Explication des Transaction Costs"):
                             st.markdown(f"""
-                            **Transaction Costs**: Estimation des coûts totaux de trading basés sur {len(analyzer.returns.dropna())} trades.
+                            ### 💳 **Transaction Costs: {transaction_costs['total_transaction_costs']:.2f}%**
 
-                            **Commission**: Coûts estimés des commissions de courtage (typiquement 0.1-0.5% par trade).
+                            **Définition**: Coûts totaux estimés du trading sur la période
 
-                            **Swap**: Coûts/gains estimés des positions overnight (frais de financement).
+                            **Calcul**: `Total Costs = Commission + Swap`
+                            - Basé sur {len(analyzer.returns.dropna())} trades
+                            - Commission estimée: ~0.1% par trade
+                            - Swap estimé: -0.005% par jour pour positions overnight
 
-                            *Note: Ces valeurs sont des estimations basées sur des standards de marché.
-                            Les coûts réels peuvent varier selon votre courtier.*
+                            **Impact sur performance**:
+                            - CAGR brut: {metrics.get('CAGR', 0):.2%}
+                            - Coûts: -{transaction_costs['total_transaction_costs']:.2f}%
+                            - **CAGR net estimé: {metrics.get('CAGR', 0) - transaction_costs['total_transaction_costs']/100:.2%}**
+
+                            ---
+
+                            ### 💰 **Commission: {transaction_costs['commission_costs']:+.2f}%**
+
+                            **Définition**: Frais de courtage par trade
+
+                            **Benchmarks selon courtier**:
+                            - 💎 Premium (Interactive Brokers): 0.05-0.10%
+                            - 📊 Standard: 0.10-0.25%
+                            - ⚠️ Élevé (CFD): 0.50-1.00%
+                            - 🎯 Estimé: {transaction_costs['commission_costs']:.2f}%
+
+                            ---
+
+                            ### 🌙 **Swap: {transaction_costs['swap_costs']:+.2f}%**
+
+                            **Définition**: Frais de financement overnight (rollover)
+
+                            **Calcul**: Position gardée la nuit × taux d'intérêt
+                            - Positif si position longue sur devise à taux élevé
+                            - Négatif si position overnight coûteuse
+
+                            **Impact**:
+                            - Négatif pour swing/position trading
+                            - Neutre pour day trading (pas d'overnight)
+
+                            *⚠️ Note: Ces valeurs sont des estimations. Vérifiez avec votre courtier pour les coûts réels.*
                             """)
 
                         st.markdown("---")
