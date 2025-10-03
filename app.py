@@ -447,8 +447,14 @@ class BacktestAnalyzerPro:
             # Alpha (excess return vs benchmark - ici on assume 0% benchmark)
             metrics['Alpha'] = metrics['CAGR']  # Alpha vs cash (0%)
 
-            # Number of Trades
-            metrics['Number_of_Trades'] = len(self.returns)
+            # Number of Trades - CORRIGÉ: utiliser trades originaux, pas returns
+            # Car pct_change().dropna() fait perdre 1 trade
+            if hasattr(self, 'original_trades_data') and self.original_trades_data is not None:
+                metrics['Number_of_Trades'] = len(self.original_trades_data)
+            elif hasattr(self, 'equity_curve') and self.equity_curve is not None:
+                metrics['Number_of_Trades'] = len(self.equity_curve)
+            else:
+                metrics['Number_of_Trades'] = len(self.returns)
 
             # === RISK-ADJUSTED METRICS ===
 
@@ -3406,9 +3412,14 @@ def main():
 
                             # S'assurer que les returns existent et ne sont pas vides
                             if analyzer.returns is not None and len(analyzer.returns) > 0:
-                                # Get date range
-                                start_date = analyzer.returns.index[0]
-                                end_date = analyzer.returns.index[-1]
+                                # CORRECTION: Utiliser la date du PREMIER TRADE, pas du premier return
+                                # Car pct_change() fait perdre le premier trade dans returns
+                                if hasattr(analyzer, 'equity_curve') and analyzer.equity_curve is not None:
+                                    start_date = analyzer.equity_curve.index[0]  # Premier trade
+                                    end_date = analyzer.equity_curve.index[-1]   # Dernier trade
+                                else:
+                                    start_date = analyzer.returns.index[0]
+                                    end_date = analyzer.returns.index[-1]
 
                                 # Calculate trading period in years
                                 trading_period_years = (end_date - start_date).days / 365.25
