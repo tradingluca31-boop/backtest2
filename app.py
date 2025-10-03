@@ -271,16 +271,12 @@ class BacktestAnalyzerPro:
                     first_return_date = self.returns.index[0]
 
                     # Si les dates sont différentes, il y a eu perte de données
+                    # Masquer le warning sauf si différence significative (>1 jour)
                     if first_equity_date != first_return_date:
-                        import streamlit as st
-                        st.warning(f"""
-                        ⚠️ **DÉTECTION AUTOMATIQUE**: Perte du premier trade détectée!
-                        - Premier trade (equity curve): {first_equity_date.strftime('%Y-%m-%d')}
-                        - Premier trade (returns): {first_return_date.strftime('%Y-%m-%d')}
-                        - **Différence**: {(first_return_date - first_equity_date).days} jour(s)
-
-                        ✅ L'application utilisera automatiquement la bonne date ({first_equity_date.strftime('%Y-%m-%d')})
-                        """)
+                        diff_days = (first_return_date - first_equity_date).days
+                        if diff_days > 1:
+                            import streamlit as st
+                            st.warning(f"⚠️ Perte de {diff_days} jours de données détectée. Correction automatique appliquée.")
 
             return True
 
@@ -3320,7 +3316,7 @@ def main():
                 # Détecter le format MT5 (avec colonnes magic, symbol, type, etc.)
                 original_df = None
                 if 'profit' in df.columns and 'time_close' in df.columns:
-                    st.info("🎯 **Fichier MT5 détecté !** Conversion automatique en cours...")
+                    # Message de conversion MT5 (discret)
 
                     # Sauvegarder le DataFrame original AVANT la conversion
                     original_df = df.copy()
@@ -3333,10 +3329,7 @@ def main():
                     last_trade_date = df['time_close_dt'].max()
                     num_trades = len(df)
 
-                    st.success("✅ Conversion MT5 terminée ! Utilisez le type 'trades'")
-                    st.info(f"📅 **Premier trade:** {first_trade_date.strftime('%d/%m/%Y %H:%M')}")
-                    st.info(f"📅 **Dernier trade:** {last_trade_date.strftime('%d/%m/%Y %H:%M')}")
-                    st.info(f"📊 **Nombre total de trades:** {num_trades}")
+                    st.success(f"✅ Conversion MT5 terminée ! {num_trades} trades ({first_trade_date.strftime('%d/%m/%Y')} - {last_trade_date.strftime('%d/%m/%Y')})")
 
                     # Créer DataFrame avec dates en index et profit en valeur
                     df_processed = df[['time_close_dt', 'profit']].copy()
@@ -3364,17 +3357,13 @@ def main():
                 # Si on a un DataFrame original MT5, le sauvegarder pour les calculs précis
                 if original_df is not None:
                     analyzer.original_trades_data = original_df
-                st.success("✅ Données chargées avec succès!")
-
-                # Télécharger benchmark S&P 500
+                # Télécharger benchmark S&P 500 (silencieux)
                 if analyzer.returns is not None and len(analyzer.returns) > 0:
                     start_date = analyzer.returns.index[0]
                     end_date = analyzer.returns.index[-1]
+                    analyzer.benchmark_returns = analyzer.fetch_sp500_data(start_date, end_date)
 
-                    with st.spinner("📊 Téléchargement benchmark S&P 500..."):
-                        analyzer.benchmark_returns = analyzer.fetch_sp500_data(start_date, end_date)
-                        if analyzer.benchmark_returns is not None:
-                            st.success("✅ Benchmark S&P 500 chargé avec succès!")
+                st.success("✅ Données chargées avec succès!")
 
                 # Afficher aperçu des données
                 with st.expander("👀 Aperçu des données"):
