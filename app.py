@@ -18,6 +18,7 @@ from datetime import datetime, timedelta
 import warnings
 import io
 import base64
+import yfinance as yf
 
 # Patch complet pour IPython sur Streamlit Cloud
 import sys
@@ -54,7 +55,23 @@ class BacktestAnalyzerPro:
         self.equity_curve = None
         self.trades_data = None
         self.benchmark = None
+        self.benchmark_returns = None
         self.custom_metrics = {}
+
+    @st.cache_data(ttl=3600)
+    def fetch_sp500_data(_self, start_date, end_date):
+        """
+        Télécharge les données historiques du S&P 500
+        """
+        try:
+            sp500 = yf.download('^GSPC', start=start_date, end=end_date, progress=False)
+            if not sp500.empty:
+                # Calculer les rendements journaliers
+                sp500_returns = sp500['Adj Close'].pct_change().dropna()
+                return sp500_returns
+        except Exception as e:
+            st.warning(f"Impossible de télécharger les données S&P 500: {e}")
+        return None
 
     def get_real_yearly_returns(self):
         """
@@ -444,8 +461,30 @@ class BacktestAnalyzerPro:
                 metrics['Log_Return'] = 0
                 metrics['Absolute_Return'] = 0
 
-            # Alpha (excess return vs benchmark - ici on assume 0% benchmark)
-            metrics['Alpha'] = metrics['CAGR']  # Alpha vs cash (0%)
+            # Alpha - Calcul avec benchmark S&P 500 si disponible
+            if self.benchmark_returns is not None and len(self.benchmark_returns) > 0:
+                # Aligner les dates entre stratégie et benchmark
+                common_dates = self.returns.index.intersection(self.benchmark_returns.index)
+                if len(common_dates) > 1:
+                    strategy_aligned = self.returns.loc[common_dates]
+                    benchmark_aligned = self.benchmark_returns.loc[common_dates]
+
+                    # Calculer CAGR du benchmark
+                    years_benchmark = len(benchmark_aligned) / 252
+                    total_benchmark_return = (1 + benchmark_aligned).prod() - 1
+                    benchmark_cagr = (1 + total_benchmark_return) ** (1 / years_benchmark) - 1 if years_benchmark > 0 else 0
+
+                    # Alpha = CAGR strategy - CAGR benchmark
+                    metrics['Alpha'] = metrics['CAGR'] - benchmark_cagr
+                    metrics['Benchmark_CAGR'] = benchmark_cagr
+                else:
+                    # Pas assez de dates communes
+                    metrics['Alpha'] = metrics['CAGR']
+                    metrics['Benchmark_CAGR'] = 0
+            else:
+                # Pas de benchmark: Alpha = CAGR (vs cash 0%)
+                metrics['Alpha'] = metrics['CAGR']
+                metrics['Benchmark_CAGR'] = 0
 
             # Number of Trades - CORRIGÉ: utiliser trades originaux, pas returns
             # Car pct_change().dropna() fait perdre 1 trade
@@ -969,15 +1008,23 @@ class BacktestAnalyzerPro:
             hovertemplate='<b>Date:</b> %{x}<br><b>Value:</b> %{y:.2f}<extra></extra>'
         ))
 
-        # Benchmark si disponible
-        if self.benchmark is not None:
-            fig.add_trace(go.Scatter(
-                x=self.benchmark.index,
-                y=self.benchmark.values,
-                name='Benchmark',
-                line=dict(color='#ff7f0e', width=1, dash='dash'),
-                hovertemplate='<b>Date:</b> %{x}<br><b>Benchmark:</b> %{y:.2f}<extra></extra>'
-            ))
+        # Benchmark S&P 500 si disponible
+        if self.benchmark_returns is not None and len(self.benchmark_returns) > 0:
+            # Aligner les dates avec la stratégie
+            common_dates = self.equity_curve.index.intersection(self.benchmark_returns.index)
+            if len(common_dates) > 1:
+                # Créer une equity curve pour le benchmark normalisée au même point de départ
+                benchmark_aligned = self.benchmark_returns.loc[common_dates]
+                initial_value = self.equity_curve.loc[common_dates[0]]
+                benchmark_curve = initial_value * (1 + benchmark_aligned).cumprod()
+
+                fig.add_trace(go.Scatter(
+                    x=benchmark_curve.index,
+                    y=benchmark_curve.values,
+                    name='S&P 500',
+                    line=dict(color='#ff7f0e', width=2, dash='dash'),
+                    hovertemplate='<b>Date:</b> %{x}<br><b>S&P 500:</b> %{y:.2f}<extra></extra>'
+                ))
 
         fig.update_layout(
             title={
@@ -3280,6 +3327,16 @@ def main():
                     analyzer.original_trades_data = original_df
                 st.success("✅ Données chargées avec succès!")
 
+                # Télécharger benchmark S&P 500
+                if analyzer.returns is not None and len(analyzer.returns) > 0:
+                    start_date = analyzer.returns.index[0]
+                    end_date = analyzer.returns.index[-1]
+
+                    with st.spinner("📊 Téléchargement benchmark S&P 500..."):
+                        analyzer.benchmark_returns = analyzer.fetch_sp500_data(start_date, end_date)
+                        if analyzer.benchmark_returns is not None:
+                            st.success("✅ Benchmark S&P 500 chargé avec succès!")
+
                 # Afficher aperçu des données
                 with st.expander("👀 Aperçu des données"):
                     st.dataframe(df.head(10))
@@ -3545,6 +3602,14 @@ def main():
                                 <div style="text-align: center;">
                                     <h4 style="margin: 5px 0; color: #ffffff;">Number of Trades</h4>
                                     <h3 style="margin: 5px 0; color: white;">{num_trades}</h3>
+                                </div>
+                                <div style="text-align: center;">
+                                    <h4 style="margin: 5px 0; color: #ffffff;">S&P 500 CAGR</h4>
+                                    <h3 style="margin: 5px 0; color: white;">{metrics.get('Benchmark_CAGR', 0):.2%}</h3>
+                                </div>
+                                <div style="text-align: center;">
+                                    <h4 style="margin: 5px 0; color: #ffffff;">Alpha vs S&P 500</h4>
+                                    <h3 style="margin: 5px 0; color: {'#00b894' if metrics.get('Alpha', 0) > 0 else '#d63031'};">{metrics.get('Alpha', 0):.2%}</h3>
                                 </div>
                             </div>
                             <div style="text-align: center; margin-top: 15px;">
