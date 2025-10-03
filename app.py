@@ -759,13 +759,6 @@ class BacktestAnalyzerPro:
                 'outlier_loss_ratio': 0.0
             }
 
-        # Calculer les statistiques de base
-        mean_return = returns.mean()
-        std_return = returns.std()
-
-        # Définir les seuils d'outliers (par exemple, au-delà de 2 écarts-types)
-        outlier_threshold = 2 * std_return
-
         # Séparer les gains et les pertes
         gains = returns[returns > 0]
         losses = returns[returns < 0]
@@ -790,22 +783,24 @@ class BacktestAnalyzerPro:
                 tail_ratio = float('inf') if max_return > 0 else 0.0
 
         # 2. Outlier Win Ratio : rapport des gains extrêmes
-        if len(gains) > 0:
-            extreme_gains = gains[gains > (mean_return + outlier_threshold)]
-            if len(extreme_gains) > 0:
-                outlier_win_ratio = len(extreme_gains) / len(gains)
-            else:
-                outlier_win_ratio = 0.0
+        # CORRIGÉ: Utiliser la moyenne et std des GAINS, pas de tous les returns
+        if len(gains) > 1:
+            mean_gains = gains.mean()
+            std_gains = gains.std()
+            threshold_gains = mean_gains + 2 * std_gains
+            extreme_gains = gains[gains > threshold_gains]
+            outlier_win_ratio = len(extreme_gains) / len(gains)
         else:
             outlier_win_ratio = 0.0
 
         # 3. Outlier Loss Ratio : rapport des pertes extrêmes
-        if len(losses) > 0:
-            extreme_losses = losses[losses < (mean_return - outlier_threshold)]
-            if len(extreme_losses) > 0:
-                outlier_loss_ratio = len(extreme_losses) / len(losses)
-            else:
-                outlier_loss_ratio = 0.0
+        # CORRIGÉ: Utiliser la moyenne et std des PERTES, pas de tous les returns
+        if len(losses) > 1:
+            mean_losses = losses.mean()
+            std_losses = losses.std()
+            threshold_losses = mean_losses - 2 * std_losses
+            extreme_losses = losses[losses < threshold_losses]
+            outlier_loss_ratio = len(extreme_losses) / len(losses)
         else:
             outlier_loss_ratio = 0.0
 
