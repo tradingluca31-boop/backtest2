@@ -779,8 +779,14 @@ class BacktestAnalyzerPro:
                 tail_ratio = float('inf') if max_return > 0 else 0.0
 
         # 2. Outlier Win Ratio : rapport des gains extrêmes
-        # CORRIGÉ: Utiliser la moyenne et std des GAINS, pas de tous les returns
-        if len(gains) > 1:
+        # Utiliser percentile pour cohérence avec Outlier Loss Ratio
+        if len(gains) >= 10:
+            # Outliers = 5% meilleurs gains (> 95ème percentile)
+            threshold_gains = np.percentile(gains, 95)
+            extreme_gains = gains[gains > threshold_gains]
+            outlier_win_ratio = len(extreme_gains) / len(gains)
+        elif len(gains) > 1:
+            # Fallback: utiliser mean + 2*std
             mean_gains = gains.mean()
             std_gains = gains.std()
             threshold_gains = mean_gains + 2 * std_gains
@@ -790,20 +796,19 @@ class BacktestAnalyzerPro:
             outlier_win_ratio = 0.0
 
         # 3. Outlier Loss Ratio : rapport des pertes extrêmes
-        # CORRIGÉ: Utiliser la moyenne et std des PERTES, pas de tous les returns
-        if len(losses) > 1:
+        # Utiliser percentile pour éviter les problèmes avec std
+        if len(losses) >= 10:
+            # Outliers = 5% pires pertes (< 5ème percentile)
+            threshold_losses = np.percentile(losses, 5)
+            extreme_losses = losses[losses < threshold_losses]
+            outlier_loss_ratio = len(extreme_losses) / len(losses)
+        elif len(losses) > 1:
+            # Fallback: utiliser mean - 2*std
             mean_losses = losses.mean()
             std_losses = losses.std()
             threshold_losses = mean_losses - 2 * std_losses
             extreme_losses = losses[losses < threshold_losses]
             outlier_loss_ratio = len(extreme_losses) / len(losses)
-
-            # DEBUG: Afficher les stats des pertes
-            import streamlit as st
-            st.write(f"🔍 DEBUG Pertes: mean={mean_losses:.4f}, std={std_losses:.4f}, threshold={threshold_losses:.4f}")
-            st.write(f"Nombre de pertes extrêmes: {len(extreme_losses)}/{len(losses)}")
-            if len(extreme_losses) > 0:
-                st.write(f"Pires pertes: {extreme_losses.nsmallest(3).values}")
         else:
             outlier_loss_ratio = 0.0
 
