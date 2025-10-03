@@ -360,13 +360,20 @@ class BacktestAnalyzerPro:
                 # Return annualisé basé sur CAGR réel
                 annual_return = metrics['CAGR']
 
-                # Sharpe Ratio (excess return vs volatility) - simplifié
-                metrics['Sharpe'] = annual_return / vol if vol > 0 else 0
+                # Sharpe Ratio - CORRIGÉ avec volatilité annualisée
+                # Source: https://www.investopedia.com/terms/s/sharperatio.asp
+                annual_vol = vol * np.sqrt(trades_per_year)
+                metrics['Sharpe'] = annual_return / annual_vol if annual_vol > 0 else 0
 
-                # Sortino Ratio (downside deviation)
+                # Sortino Ratio - CORRIGÉ avec downside deviation annualisée
+                # Source: https://www.investopedia.com/terms/s/sortinoratio.asp
                 negative_returns = returns[returns < 0]
                 downside_std = negative_returns.std() if len(negative_returns) > 0 else vol
-                metrics['Sortino'] = annual_return / downside_std if downside_std > 0 else 0
+                annual_downside_std = downside_std * np.sqrt(trades_per_year)
+                metrics['Sortino'] = annual_return / annual_downside_std if annual_downside_std > 0 else 0
+
+                # Sauvegarder la volatilité annualisée
+                metrics['Volatility_Annualized'] = annual_vol
 
                 # Max Drawdown
                 cumulative_returns = (1 + returns).cumprod()
@@ -445,30 +452,41 @@ class BacktestAnalyzerPro:
 
             # === RISK-ADJUSTED METRICS ===
 
-            # Probabilistic Sharpe Ratio (estimation)
+            # Probabilistic Sharpe Ratio - FORMULE ACADÉMIQUE CORRECTE
+            # Source: Bailey & López de Prado (2012) - https://papers.ssrn.com/sol3/papers.cfm?abstract_id=2460551
             if len(self.returns) > 1 and metrics['Volatility'] > 0:
-                # Calcul approximatif du Probabilistic Sharpe Ratio
-                n_observations = len(self.returns)
-                sharpe = metrics['Sharpe']
+                from scipy import stats as scipy_stats
 
-                # Formule approximative pour PSR
-                if sharpe > 0:
-                    import math
-                    # PSR basé sur distribution normale des returns
-                    psr_stat = (sharpe * math.sqrt(n_observations - 1)) / math.sqrt(1 - sharpe**2/n_observations) if n_observations > 1 else 0
-                    # Approximation: convertir en pourcentage de confiance
-                    if sharpe >= 2:
-                        psr = 0.95  # Très bon Sharpe
-                    elif sharpe >= 1.5:
-                        psr = 0.85  # Bon Sharpe
-                    elif sharpe >= 1:
-                        psr = 0.70  # Correct
+                n = len(self.returns)
+                sr = metrics['Sharpe']
+                skew = metrics.get('Skewness', 0)
+                kurt = metrics.get('Kurtosis', 3)  # Kurtosis normale = 3
+
+                try:
+                    # Formule de Haircut Sharpe Ratio (Bailey & López de Prado)
+                    # PSR = Φ(√(n-1) * SR / √(1 - γ3·SR + (γ4-1)/4·SR²))
+                    denominator_term = 1 - skew*sr + ((kurt-1)/4)*sr**2
+
+                    if denominator_term > 0 and n > 1:
+                        denominator = np.sqrt(denominator_term)
+                        psr_stat = np.sqrt(n-1) * sr / denominator
+                        # Convertir en probabilité avec fonction de distribution cumulative normale
+                        psr = scipy_stats.norm.cdf(psr_stat)
                     else:
-                        psr = max(0.50, 0.50 + 0.20 * sharpe)
-                else:
-                    psr = max(0.01, 0.50 + 0.15 * sharpe)  # Sharpe négatif
+                        # Fallback si calcul impossible
+                        psr = 0.5
 
-                metrics['Probabilistic_Sharpe_Ratio'] = psr
+                    # Borner entre 0 et 1
+                    psr = max(0.0, min(1.0, psr))
+                    metrics['Probabilistic_Sharpe_Ratio'] = psr
+
+                except Exception as e:
+                    # En cas d'erreur, utiliser une approximation simple
+                    if sr > 0:
+                        psr = min(0.95, 0.50 + 0.30 * sr)
+                    else:
+                        psr = max(0.05, 0.50 + 0.15 * sr)
+                    metrics['Probabilistic_Sharpe_Ratio'] = psr
             else:
                 metrics['Probabilistic_Sharpe_Ratio'] = 0.5
 
@@ -3218,14 +3236,22 @@ def main():
                     # Convertir les timestamps MT5 en dates
                     df['time_close_dt'] = pd.to_datetime(df['time_close'], unit='s', errors='coerce')
 
+                    # DEBUG: Afficher informations sur les trades
+                    first_trade_date = df['time_close_dt'].min()
+                    last_trade_date = df['time_close_dt'].max()
+                    num_trades = len(df)
+
+                    st.success("✅ Conversion MT5 terminée ! Utilisez le type 'trades'")
+                    st.info(f"📅 **Premier trade:** {first_trade_date.strftime('%d/%m/%Y %H:%M')}")
+                    st.info(f"📅 **Dernier trade:** {last_trade_date.strftime('%d/%m/%Y %H:%M')}")
+                    st.info(f"📊 **Nombre total de trades:** {num_trades}")
+
                     # Créer DataFrame avec dates en index et profit en valeur
                     df_processed = df[['time_close_dt', 'profit']].copy()
                     df_processed = df_processed.dropna()
                     df_processed = df_processed.set_index('time_close_dt')
                     df_processed = df_processed.sort_index()
                     df = df_processed
-
-                    st.success("✅ Conversion MT5 terminée ! Utilisez le type 'trades'")
 
                 # Sinon, essayer le format standard avec dates en première colonne
                 elif len(df.columns) > 1:
