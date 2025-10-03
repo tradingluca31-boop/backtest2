@@ -3936,42 +3936,50 @@ def main():
                                     expected_monthly = expected_per_trade * 21
                                     expected_yearly = expected_per_trade * 252
 
-                                # Risk of Ruin (calcul corrigé)
-                                daily_vol = analyzer.returns.std()
-                                if daily_vol > 0:
-                                    # Calcul basé sur la probabilité de drawdown important
-                                    negative_returns = analyzer.returns[analyzer.returns < 0]
-                                    if len(negative_returns) > 0:
-                                        # Probabilité d'avoir des trades perdants
-                                        loss_probability = len(negative_returns) / len(analyzer.returns)
+                                # Risk of Ruin - FORMULE ACADÉMIQUE CORRECTE
+                                # Source: Ralph Vince "The Mathematics of Money Management" (1992)
+                                # RoR = ((1-W)/(1+W))^U où:
+                                # W = (Win_Rate × Avg_Win - (1-Win_Rate) × Avg_Loss) / Avg_Loss
+                                # U = unités de risque (approximé par capital / avg_loss)
 
-                                        # Risk of ruin basé sur le win rate et average win/loss
-                                        winning_trades = analyzer.returns[analyzer.returns > 0]
-                                        if len(winning_trades) > 0:
-                                            avg_win = winning_trades.mean()
-                                            avg_loss = abs(negative_returns.mean())
+                                if len(analyzer.returns) > 0:
+                                    winning_trades = analyzer.returns[analyzer.returns > 0]
+                                    losing_trades = analyzer.returns[analyzer.returns < 0]
 
-                                            # Formule Risk of Ruin classique adaptée
-                                            if avg_win > 0:
-                                                win_loss_ratio = avg_win / avg_loss
-                                                win_rate = len(winning_trades) / len(analyzer.returns)
+                                    if len(losing_trades) > 0 and len(winning_trades) > 0:
+                                        win_rate = len(winning_trades) / len(analyzer.returns)
+                                        avg_win = winning_trades.mean()
+                                        avg_loss = abs(losing_trades.mean())
 
-                                                # Risk of ruin simplifié: si win_rate < 50% et win/loss < 1
-                                                if win_rate < 0.5 and win_loss_ratio < 1:
-                                                    risk_of_ruin = min(0.8 * (1 - win_rate) * (1 - win_loss_ratio), 0.95)
-                                                else:
-                                                    # Stratégie profitable: risk of ruin faible
-                                                    risk_of_ruin = max(0.05, 0.3 * (1 - win_rate))
+                                        if avg_loss > 0:
+                                            # Calcul du W (edge/advantage)
+                                            W = (win_rate * avg_win - (1 - win_rate) * avg_loss) / avg_loss
+
+                                            # Approximation du nombre d'unités U (risque = 2% du capital par trade)
+                                            risk_per_trade = 0.02  # 2% du capital
+                                            U = 1 / risk_per_trade  # 50 unités
+
+                                            # Formule Risk of Ruin
+                                            if W > 0:
+                                                # Stratégie profitable: RoR très faible
+                                                risk_of_ruin = ((1 - W) / (1 + W)) ** U
+                                            elif W < 0:
+                                                # Stratégie perdante: RoR élevé
+                                                risk_of_ruin = 1 - ((1 + W) / (1 - W)) ** U
+                                                risk_of_ruin = min(1.0, max(0.0, risk_of_ruin))
                                             else:
+                                                # W = 0 : jeu équitable
                                                 risk_of_ruin = 0.5
                                         else:
-                                            # Que des trades perdants = 100% risk of ruin
-                                            risk_of_ruin = 1.0
-                                    else:
+                                            risk_of_ruin = 0.5
+                                    elif len(losing_trades) == 0:
                                         # Aucun trade perdant = 0% risk of ruin
                                         risk_of_ruin = 0.0
+                                    else:
+                                        # Que des trades perdants = 100% risk of ruin
+                                        risk_of_ruin = 1.0
                                 else:
-                                    risk_of_ruin = 0.0
+                                    risk_of_ruin = 0.5
 
                                 # Daily VaR (5% VaR - perte maximale dans 95% des cas)
                                 daily_var = analyzer.returns.quantile(0.05)
@@ -3986,31 +3994,43 @@ def main():
                                     expected_monthly = expected_daily * 21
                                     expected_yearly = expected_daily * 252
 
-                                    daily_vol = equity_returns.std()
-                                    if daily_vol > 0:
-                                        negative_returns = equity_returns[equity_returns < 0]
-                                        if len(negative_returns) > 0:
-                                            # Calculer Risk of Ruin basé sur equity returns
-                                            winning_days = equity_returns[equity_returns > 0]
-                                            if len(winning_days) > 0:
-                                                avg_win = winning_days.mean()
-                                                avg_loss = abs(negative_returns.mean())
-                                                win_rate = len(winning_days) / len(equity_returns)
+                                    # Risk of Ruin - FORMULE ACADÉMIQUE CORRECTE (pour equity curve)
+                                    # Source: Ralph Vince "The Mathematics of Money Management" (1992)
+                                    winning_days = equity_returns[equity_returns > 0]
+                                    losing_days = equity_returns[equity_returns < 0]
 
-                                                if avg_win > 0:
-                                                    win_loss_ratio = avg_win / avg_loss
-                                                    if win_rate < 0.5 and win_loss_ratio < 1:
-                                                        risk_of_ruin = min(0.6 * (1 - win_rate), 0.8)
-                                                    else:
-                                                        risk_of_ruin = max(0.05, 0.2 * (1 - win_rate))
-                                                else:
-                                                    risk_of_ruin = 0.5
+                                    if len(losing_days) > 0 and len(winning_days) > 0:
+                                        win_rate = len(winning_days) / len(equity_returns)
+                                        avg_win = winning_days.mean()
+                                        avg_loss = abs(losing_days.mean())
+
+                                        if avg_loss > 0:
+                                            # Calcul du W (edge/advantage)
+                                            W = (win_rate * avg_win - (1 - win_rate) * avg_loss) / avg_loss
+
+                                            # Approximation du nombre d'unités U (risque = 2% du capital par trade)
+                                            risk_per_trade = 0.02  # 2% du capital
+                                            U = 1 / risk_per_trade  # 50 unités
+
+                                            # Formule Risk of Ruin
+                                            if W > 0:
+                                                # Stratégie profitable: RoR très faible
+                                                risk_of_ruin = ((1 - W) / (1 + W)) ** U
+                                            elif W < 0:
+                                                # Stratégie perdante: RoR élevé
+                                                risk_of_ruin = 1 - ((1 + W) / (1 - W)) ** U
+                                                risk_of_ruin = min(1.0, max(0.0, risk_of_ruin))
                                             else:
-                                                risk_of_ruin = 1.0
+                                                # W = 0 : jeu équitable
+                                                risk_of_ruin = 0.5
                                         else:
-                                            risk_of_ruin = 0.0
-                                    else:
+                                            risk_of_ruin = 0.5
+                                    elif len(losing_days) == 0:
+                                        # Aucun jour perdant = 0% risk of ruin
                                         risk_of_ruin = 0.0
+                                    else:
+                                        # Que des jours perdants = 100% risk of ruin
+                                        risk_of_ruin = 1.0
 
                                     daily_var = equity_returns.quantile(0.05)
                                 else:
