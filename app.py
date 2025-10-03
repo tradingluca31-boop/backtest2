@@ -66,8 +66,30 @@ class BacktestAnalyzerPro:
         try:
             sp500 = yf.download('^GSPC', start=start_date, end=end_date, progress=False)
             if not sp500.empty:
+                # Gérer les différents formats de colonnes de yfinance
+                if 'Adj Close' in sp500.columns:
+                    close_col = 'Adj Close'
+                elif ('Adj Close', '^GSPC') in sp500.columns:
+                    close_col = ('Adj Close', '^GSPC')
+                elif 'Close' in sp500.columns:
+                    close_col = 'Close'
+                elif ('Close', '^GSPC') in sp500.columns:
+                    close_col = ('Close', '^GSPC')
+                else:
+                    # Si MultiIndex, prendre la première colonne de prix de clôture
+                    if isinstance(sp500.columns, pd.MultiIndex):
+                        close_cols = [col for col in sp500.columns if 'Close' in str(col)]
+                        if close_cols:
+                            close_col = close_cols[0]
+                        else:
+                            st.warning("Impossible de trouver la colonne de prix dans les données S&P 500")
+                            return None
+                    else:
+                        st.warning("Format de données S&P 500 non reconnu")
+                        return None
+
                 # Calculer les rendements journaliers
-                sp500_returns = sp500['Adj Close'].pct_change().dropna()
+                sp500_returns = sp500[close_col].pct_change().dropna()
                 return sp500_returns
         except Exception as e:
             st.warning(f"Impossible de télécharger les données S&P 500: {e}")
@@ -184,6 +206,9 @@ class BacktestAnalyzerPro:
 
             if data_type == 'returns':
                 self.returns = data_series
+                # Pour returns, créer equity curve pour validation
+                if not hasattr(self, 'equity_curve') or self.equity_curve is None:
+                    self.equity_curve = (1 + self.returns).cumprod()
             elif data_type == 'equity':
                 self.equity_curve = data_series
                 # Calculer les returns depuis equity curve
@@ -237,6 +262,25 @@ class BacktestAnalyzerPro:
                         rolling_capital = initial_capital + daily_pnl.cumsum().shift(1, fill_value=0)
                         self.returns = daily_pnl / rolling_capital
                         self.returns = self.returns.dropna().replace([np.inf, -np.inf], np.nan).dropna()
+
+            # === VALIDATION AUTOMATIQUE DE LA PREMIÈRE DATE ===
+            # Vérifier si pct_change().dropna() a fait perdre le premier trade
+            if self.equity_curve is not None and self.returns is not None:
+                if len(self.equity_curve) > 0 and len(self.returns) > 0:
+                    first_equity_date = self.equity_curve.index[0]
+                    first_return_date = self.returns.index[0]
+
+                    # Si les dates sont différentes, il y a eu perte de données
+                    if first_equity_date != first_return_date:
+                        import streamlit as st
+                        st.warning(f"""
+                        ⚠️ **DÉTECTION AUTOMATIQUE**: Perte du premier trade détectée!
+                        - Premier trade (equity curve): {first_equity_date.strftime('%Y-%m-%d')}
+                        - Premier trade (returns): {first_return_date.strftime('%Y-%m-%d')}
+                        - **Différence**: {(first_return_date - first_equity_date).days} jour(s)
+
+                        ✅ L'application utilisera automatiquement la bonne date ({first_equity_date.strftime('%Y-%m-%d')})
+                        """)
 
             return True
 
